@@ -28,9 +28,9 @@ async function initMediaPipe() {
         delegate: "GPU"
       },
       runningMode: "VIDEO",
-      scoreThreshold: 0.6 // Mayor precisión (60%)
+      scoreThreshold: 0.5 // Bajamos temporalmente al 50% para facilitar detecciones en el celular
     });
-    setStatus('Modelo de alta precisión listo. Pulsa "Activar cámara" para comenzar.');
+    setStatus('Modelo listo. Pulsa "Activar cámara".');
   } catch (err) {
     setStatus(`Error al cargar el modelo: ${err.message}`);
   }
