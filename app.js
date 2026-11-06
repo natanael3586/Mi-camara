@@ -8,7 +8,11 @@ let stream = null, mode = 'photo', facing = 'environment', recorder = null, chun
 let objectDetector = null;
 let animFrameId = null;
 
-const setStatus = (msg) => status.textContent = msg;
+const setStatus = (msg) => {
+  const statusEl = document.getElementById('status');
+  if (statusEl) statusEl.textContent = msg;
+};
+
 const activeTrack = () => stream?.getVideoTracks()[0];
 const safeStop = () => { 
   if (animFrameId) cancelAnimationFrame(animFrameId);
@@ -16,7 +20,7 @@ const safeStop = () => {
   stream = null; 
 };
 
-// 1. Inicializar el detector de objetos con mayor precisión (EfficientDet-Lite2)
+// 1. Inicializar el detector de objetos con EfficientDet-Lite2 (alta precisión desde red oficial)
 async function initMediaPipe() {
   try {
     const vision = await FilesetResolver.forVisionTasks(
@@ -28,19 +32,19 @@ async function initMediaPipe() {
         delegate: "GPU"
       },
       runningMode: "VIDEO",
-      scoreThreshold: 0.5 // Bajamos temporalmente al 50% para facilitar detecciones en el celular
+      scoreThreshold: 0.5 // Umbral de confianza del 50%
     });
-    setStatus('Modelo listo. Pulsa "Activar cámara".');
+    setStatus('Modelo listo. Pulsa "Activar cámara" para comenzar.');
   } catch (err) {
     setStatus(`Error al cargar el modelo: ${err.message}`);
   }
 }
 
 const canvasElement = $('output_canvas');
-const canvasCtx = canvasElement.getContext('2d');
+const canvasCtx = canvasElement ? canvasElement.getContext('2d') : null;
 
 function processVideoFrame() {
-  if (stream && video.readyState >= 2 && objectDetector) {
+  if (stream && video.readyState >= 2 && objectDetector && canvasElement && canvasCtx) {
     if (canvasElement.width !== video.videoWidth || canvasElement.height !== video.videoHeight) {
       canvasElement.width = video.videoWidth;
       canvasElement.height = video.videoHeight;
@@ -107,30 +111,37 @@ async function enumerate() {
   if (!navigator.mediaDevices?.enumerateDevices) return;
   const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
   const current = activeTrack()?.getSettings()?.deviceId;
-  select.replaceChildren();
-  cams.forEach((c, i) => { 
-    const opt = document.createElement('option'); 
-    opt.value = c.deviceId; 
-    opt.textContent = c.label || `Cámara ${i+1}`; 
-    select.append(opt); 
-  });
-  if (current && cams.some(c => c.deviceId === current)) select.value = current;
-  select.disabled = recording || cams.length < 2;
+  if (select) {
+    select.replaceChildren();
+    cams.forEach((c, i) => { 
+      const opt = document.createElement('option'); 
+      opt.value = c.deviceId; 
+      opt.textContent = c.label || `Cámara ${i+1}`; 
+      select.append(opt); 
+    });
+    if (current && cams.some(c => c.deviceId === current)) select.value = current;
+    select.disabled = recording || cams.length < 2;
+  }
 }
 
 function updateFeatures() {
   const track = activeTrack(), caps = track?.getCapabilities?.() || {}, settings = track?.getSettings?.() || {};
   const zoom = $('zoom');
-  if (caps.zoom && Number.isFinite(caps.zoom.min) && Number.isFinite(caps.zoom.max)) {
-    zoom.min = caps.zoom.min; zoom.max = caps.zoom.max; zoom.step = caps.zoom.step || 0.1;
-    zoom.value = settings.zoom ?? caps.zoom.min; zoom.disabled = false;
-  } else { zoom.min = zoom.max = zoom.value = 1; zoom.disabled = true; }
-  $('zoomValue').textContent = `${Number(zoom.value).toFixed(1)}×`;
-  $('flashBtn').disabled = !caps.torch;
-  $('flashBtn').textContent = '⚡ Flash'; flashOn = false;
-  $('captureBtn').disabled = !stream;
-  $('stopBtn').disabled = !recording;
-  $('flipBtn').disabled = recording;
+  if (zoom) {
+    if (caps.zoom && Number.isFinite(caps.zoom.min) && Number.isFinite(caps.zoom.max)) {
+      zoom.min = caps.zoom.min; zoom.max = caps.zoom.max; zoom.step = caps.zoom.step || 0.1;
+      zoom.value = settings.zoom ?? caps.zoom.min; zoom.disabled = false;
+    } else { zoom.min = zoom.max = zoom.value = 1; zoom.disabled = true; }
+  }
+  if ($('zoomValue')) $('zoomValue').textContent = `${Number(zoom?.value || 1).toFixed(1)}×`;
+  if ($('flashBtn')) {
+    $('flashBtn').disabled = !caps.torch;
+    $('flashBtn').textContent = '⚡ Flash'; 
+  }
+  flashOn = false;
+  if ($('captureBtn')) $('captureBtn').disabled = !stream;
+  if ($('stopBtn')) $('stopBtn').disabled = !recording;
+  if ($('flipBtn')) $('flipBtn').disabled = recording;
 }
 
 async function startCamera(deviceId) {
@@ -176,7 +187,7 @@ const zoomEl = $('zoom');
 if (zoomEl) {
   zoomEl.oninput = async (e) => {
     const value = Number(e.target.value); 
-    $('zoomValue').textContent = `${value.toFixed(1)}×`;
+    if ($('zoomValue')) $('zoomValue').textContent = `${value.toFixed(1)}×`;
     try { await activeTrack()?.applyConstraints({advanced:[{zoom:value}]}); } catch { setStatus('El zoom no está disponible para esta cámara.'); }
   };
 }
